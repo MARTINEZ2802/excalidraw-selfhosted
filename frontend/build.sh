@@ -14,7 +14,7 @@ git clone https://github.com/excalidraw/excalidraw.git "$SRC"
 git -C "$SRC" checkout "$REF"
 cd "$SRC"
 yarn install --frozen-lockfile
-(cd excalidraw-app && yarn add @supabase/supabase-js@2)
+(cd excalidraw-app && yarn add @supabase/supabase-js@2.118.0)
 
 # --- Capa propia: login, carpetas, administración ---
 cp -r "$HERE/overlay/files" excalidraw-app/files

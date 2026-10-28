@@ -22,7 +22,7 @@ services:
     staticPublishPath: frontend/dist
     envVars:
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 22.12.0
       - key: EXCALIDRAW_REF
         value: e7b534668a60add7f725531f3c9abf32508c7b4e   # commit probado; los parches de build.sh dependen de él
       - key: VITE_SUPABASE_URL
