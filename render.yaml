@@ -1,0 +1,39 @@
+# Render Blueprint: Excalidraw (static frontend) + excalidraw-room (WebSocket backend)
+services:
+  # ---------- Backend: excalidraw-room (socket.io) ----------
+  - type: web
+    name: excalidraw-room
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: CORS_ORIGIN
+        value: "*"            # tras el primer deploy, cámbialo a https://<tu-frontend>.onrender.com
+      # PORT lo inyecta Render (10000 por defecto) y excalidraw-room lo lee de process.env.PORT
+
+  # ---------- Frontend: Excalidraw (Static Site) ----------
+  - type: web
+    name: excalidraw
+    runtime: static
+    buildCommand: bash frontend/build.sh
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: EXCALIDRAW_REF
+        value: e7b534668a60add7f725531f3c9abf32508c7b4e   # commit probado; los parches de build.sh dependen de él
+      - key: VITE_SUPABASE_URL
+        value: https://jeupgukfddpepoeebdrn.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY   # clave publishable: pública por diseño, la seguridad la dan las políticas RLS
+        value: sb_publishable_7H1NCkHNQSTuzjMO5jj-Og_RpPSpyHD
+      # URL pública del backend, p.ej. https://excalidraw-room.onrender.com
+      # (fromService/host entrega el host PRIVADO, inservible desde el navegador)
+      - key: VITE_APP_WS_SERVER_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
