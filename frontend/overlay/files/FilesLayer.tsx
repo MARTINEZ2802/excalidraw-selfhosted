@@ -6,6 +6,7 @@ import { supabase } from "./supabase";
 import type { Drawing, Folder, Profile } from "./supabase";
 
 const BUCKET = "drawing-files";
+const LAST_KEY = "excalidraw:lastDrawing";
 const DRAWING_COLUMNS = "id,folder_id,name,room_id,updated_at";
 const inRoom = () => window.location.hash.startsWith("#room=");
 
@@ -30,6 +31,10 @@ export const FilesLayer = () => {
   const [status, setStatus] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [noAccess, setNoAccess] = useState<
+    "folders" | "drawings" | "error" | null
+  >(null);
+  const booted = useRef(false);
 
   const currentRef = useRef<string | null>(null);
   const lastSig = useRef("");
@@ -42,8 +47,11 @@ export const FilesLayer = () => {
       supabase.from("folders").select("id,name").order("name"),
       supabase.from("drawings").select(DRAWING_COLUMNS).order("name"),
     ]);
-    setFolders((f.data as Folder[]) || []);
-    setDrawings((d.data as Drawing[]) || []);
+    const fl = (f.data as Folder[]) || [];
+    const dl = (d.data as Drawing[]) || [];
+    setFolders(fl);
+    setDrawings(dl);
+    return { folders: fl, drawings: dl, ok: !f.error && !d.error };
   }, []);
 
   useEffect(() => {
@@ -96,9 +104,13 @@ export const FilesLayer = () => {
             upsert: true,
             contentType: f.mimeType,
           });
-        if (!error) {
-          uploaded.current.add(`${id}/${fid}`);
+        if (error) {
+          // No marcar como guardado: así se reintenta y el usuario lo ve
+          setStatus("Error al subir imagen: " + error.message);
+          setDirty(true);
+          return;
         }
+        uploaded.current.add(`${id}/${fid}`);
       }
     }
     const { error } = await supabase
@@ -207,7 +219,41 @@ export const FilesLayer = () => {
     setDirty(false);
     setCurrentId(d.id);
     setStatus("");
+    try {
+      localStorage.setItem(LAST_KEY, d.id);
+    } catch {}
   };
+
+  // Al entrar: abrir automáticamente el último dibujo usado (o el más reciente)
+  // al que el usuario tenga acceso; si no hay ninguno, avisar con un modal.
+  useEffect(() => {
+    if (!api || !me || booted.current) {
+      return;
+    }
+    booted.current = true;
+    (async () => {
+      const { folders: fl, drawings: dl, ok } = await refresh();
+      if (!ok) {
+        setNoAccess("error");
+        return;
+      }
+      if (dl.length === 0) {
+        setNoAccess(fl.length === 0 ? "folders" : "drawings");
+        return;
+      }
+      if (inRoom()) {
+        return; // se está entrando por enlace de sala: no pisar la escena
+      }
+      let last: string | null = null;
+      try {
+        last = localStorage.getItem(LAST_KEY);
+      } catch {}
+      const pick =
+        dl.find((d) => d.id === last) ??
+        [...dl].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+      await openDrawing(pick);
+    })();
+  }, [api, me, refresh]);
 
   const createDrawing = async (folder: Folder) => {
     const name = prompt(`Nombre del dibujo en "${folder.name}"`)?.trim();
@@ -228,6 +274,7 @@ export const FilesLayer = () => {
     lastSig.current = "";
     setDirty(false);
     setCurrentId(data.id);
+    setNoAccess(null);
     await refresh();
   };
 
@@ -242,8 +289,63 @@ export const FilesLayer = () => {
   const current = drawings.find((d) => d.id === currentId);
   const currentFolder = folders.find((f) => f.id === current?.folder_id);
 
+  const noAccessText = {
+    folders:
+      "No tienes acceso a ninguna carpeta, por lo que no hay dibujos para abrir. Pide a un administrador que te asigne una.",
+    drawings:
+      "Tus carpetas todavía no tienen dibujos. Crea uno desde 📁 Archivos o pide a un administrador que lo haga.",
+    error:
+      "No se pudieron cargar tus dibujos. Revisa tu conexión e intenta de nuevo.",
+  };
+
   return (
     <>
+      {noAccess && me && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 200,
+            background: "rgba(0,0,0,.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            role="alertdialog"
+            style={{
+              background: "#fff",
+              color: "#222",
+              borderRadius: 12,
+              padding: 24,
+              width: 400,
+              maxWidth: "90vw",
+              boxShadow: "0 8px 40px rgba(0,0,0,.3)",
+              fontFamily: "system-ui, sans-serif",
+            }}
+          >
+            <h3 style={{ marginTop: 0, color: "#c92a2a" }}>
+              ⚠️ Sin dibujos disponibles
+            </h3>
+            <p>{noAccessText[noAccess]}</p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => supabase.auth.signOut()}>
+                Cerrar sesión
+              </button>
+              {noAccess === "error" ? (
+                <button onClick={() => window.location.reload()}>
+                  Reintentar
+                </button>
+              ) : (
+                (me.role === "admin" || noAccess === "drawings") && (
+                  <button onClick={() => setNoAccess(null)}>Entendido</button>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div
         style={{
           position: "fixed",

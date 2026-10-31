@@ -27,6 +27,9 @@ sed -i 's#<ExcalidrawApp />#<AuthGate><ExcalidrawApp /></AuthGate>#' excalidraw-
 sed -i '0,/^import {$/s##import { FilesLayer } from "./files/FilesLayer";\nimport {#' excalidraw-app/App.tsx
 sed -i 's#<ExcalidrawWrapper />#<ExcalidrawWrapper />\n          <FilesLayer />#' excalidraw-app/App.tsx
 
+# Parche 3: quitar banner Excalidraw+, pantalla de bienvenida y opciones del menú
+node "$HERE/patch.mjs"
+
 # Falla el build si algún parche no aplicó (p. ej. al cambiar de versión)
 grep -q "<AuthGate>" excalidraw-app/index.tsx || { echo "Parche index.tsx falló"; exit 1; }
 grep -q "<FilesLayer />" excalidraw-app/App.tsx || { echo "Parche App.tsx falló (<ExcalidrawWrapper />)"; exit 1; }
