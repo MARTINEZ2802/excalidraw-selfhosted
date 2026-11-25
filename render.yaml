@@ -14,7 +14,29 @@ services:
         value: "*"            # tras el primer deploy, cámbialo a https://<tu-frontend>.onrender.com
       # PORT lo inyecta Render (10000 por defecto) y excalidraw-room lo lee de process.env.PORT
 
-  # ---------- Frontend: Excalidraw (Static Site) ----------
+  # ---------- Frontend nuevo: plataforma de proyectos (app/) ----------
+  - type: web
+    name: proyectos
+    runtime: static
+    rootDir: app
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: VITE_SUPABASE_URL
+        value: https://jeupgukfddpepoeebdrn.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY   # publishable: pública por diseño, la seguridad la dan las políticas RLS
+        value: sb_publishable_7H1NCkHNQSTuzjMO5jj-Og_RpPSpyHD
+      # URL pública del servidor de salas (colaboración en vivo en pizarras)
+      - key: VITE_APP_WS_SERVER_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ---------- Frontend anterior: Excalidraw parchado (se retira tras validar "proyectos") ----------
   - type: web
     name: excalidraw
     runtime: static
