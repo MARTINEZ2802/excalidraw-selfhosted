@@ -29,6 +29,8 @@ const CanvasPage = ({ page }: { page: Page }) => {
   const apiRef = useRef<any>(null);
   const collab = useRef<CollabHandle | null>(null);
   const savingRef = useRef<Promise<void> | null>(null);
+  const latest = useRef<{ elements: readonly any[]; bg?: string; files: Record<string, any> } | null>(null);
+  const loadedCount = useRef(0);
   apiRef.current = api;
 
   // Cargar escena
@@ -38,6 +40,7 @@ const CanvasPage = ({ page }: { page: Page }) => {
       .then(({ scene, files }) => {
         if (!alive) return;
         lastSig.current = sigOf(scene.elements || []);
+        loadedCount.current = (scene.elements || []).length;
         setInitial({
           elements: scene.elements || [],
           appState: { viewBackgroundColor: scene.appState?.viewBackgroundColor ?? "#ffffff" },
@@ -52,28 +55,27 @@ const CanvasPage = ({ page }: { page: Page }) => {
   }, [drawingId]);
 
   const save = useCallback(async () => {
-    const a = apiRef.current;
-    if (!a || !canEdit) return;
-    const els = a.getSceneElements();
-    const sig = sigOf(els);
+    // IMPORTANTE: se guarda la última escena que emitió onChange, nunca se lee del API.
+    // Al salir de la página Excalidraw se desmonta ANTES que este efecto y su escena
+    // queda vacía: leerla en ese momento borraba el dibujo guardado.
+    const snap = latest.current;
+    if (!snap || !canEdit) return;
+    const live = snap.elements.filter((e) => !e.isDeleted);
+    const sig = sigOf(live);
     if (sig === lastSig.current) {
       setStatus("saved");
       return;
     }
+    // Defensa extra: una escena vacía sin elementos borrados por el usuario no es una edición real
+    if (live.length === 0 && loadedCount.current > 0 && !snap.elements.some((e) => e.isDeleted)) return;
     setStatus("saving");
-    const run = saveScene(
-      drawingId,
-      els,
-      a.getAppState().viewBackgroundColor,
-      a.getFiles(),
-      uploaded.current,
-      me.id,
-    )
+    const run = saveScene(drawingId, live, snap.bg, snap.files, uploaded.current, me.id)
       .then(() => {
         lastSig.current = sig;
         // "toca" la página (updated_at) para refrescar miniaturas y recientes de todos
         supabase.from("pages").update({ drawing_id: drawingId }).eq("id", page.id).then(() => {});
-        setStatus(sigOf(a.getSceneElements()) === sig ? "saved" : "dirty");
+        const now = latest.current;
+        setStatus(now && sigOf(now.elements.filter((e) => !e.isDeleted)) !== sig ? "dirty" : "saved");
         setStatusMsg("");
       })
       .catch((e) => {
@@ -122,7 +124,8 @@ const CanvasPage = ({ page }: { page: Page }) => {
     };
   }, [api, drawingId, me]);
 
-  const onChange = (elements: readonly any[]) => {
+  const onChange = (elements: readonly any[], appState: any, files: Record<string, any>) => {
+    latest.current = { elements, bg: appState?.viewBackgroundColor, files };
     collab.current?.onLocalChange();
     if (!canEdit) return;
     if (sigOf(elements.filter((e) => !e.isDeleted)) !== lastSig.current) {
